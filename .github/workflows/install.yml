@@ -1,0 +1,42 @@
+name: Homebrew install and upgrade
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  homebrew:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install previous release, then upgrade from this tap
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew tap raithlin/tap
+          tap=$(brew --repository raithlin/tap)
+          cp test-fixtures/gha.rb "$tap/Casks/gha.rb"
+          mkdir -p "$HOME/.codex" "$HOME/.agents/skills/gha"
+          printf 'Personal instructions\n' > "$HOME/.codex/AGENTS.md"
+          printf 'Customized skill\n' > "$HOME/.agents/skills/gha/SKILL.md"
+          before=$(shasum -a 256 "$HOME/.codex/AGENTS.md" "$HOME/.agents/skills/gha/SKILL.md")
+          brew install --cask raithlin/tap/gha
+          gha --help
+          cp Casks/gha.rb "$tap/Casks/gha.rb"
+          brew upgrade --cask raithlin/tap/gha
+          gha capabilities --format json | python3 -c 'import json,sys; assert json.load(sys.stdin)["commands"]'
+          gha --help
+          test "$(shasum -a 256 "$HOME/.codex/AGENTS.md" "$HOME/.agents/skills/gha/SKILL.md")" = "$before"
+          brew list --cask --versions gha
+          brew uninstall --cask gha
+          test "$(shasum -a 256 "$HOME/.codex/AGENTS.md" "$HOME/.agents/skills/gha/SKILL.md")" = "$before"
